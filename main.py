@@ -1,5 +1,5 @@
 from fastapi import FastAPI, HTTPException, Depends, status, Header, Request
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import List, Optional
 import jwt
 import datetime
@@ -22,9 +22,9 @@ class Producto(BaseModel):
     nombre: str
     descripcion: str
     subcategoria: str
-    precio: float
-    precioxcantidad: float
-    estado: str
+    precio: float = Field(gt=0) # gt=0 significa "Greater Than 0"
+    precioxcantidad: float = Field(gt=0)
+    estado: str # Validaremos que sea 'activo' o 'inactivo' en la lógica
 
 @app.get("/")
 def inicio():
@@ -64,13 +64,15 @@ def login(datos: dict):
     usuario = datos.get("usuario")
     password = datos.get("password")
     
-    # Buscamos si el usuario existe en nuestra lista de memoria
     user_found = next((u for u in usuarios_db if u["usuario"] == usuario and u["password"] == password), None)
     
     if not user_found:
-        raise HTTPException(status_code=401, detail="Usuario o contraseña incorrectos")
+        # Error con estructura Nivel 2 (punto 6 del examen)
+        raise HTTPException(
+            status_code=401, 
+            detail={"error": {"code": "INVALID_CREDENTIALS", "message": "Usuario o contraseña incorrectos"}}
+        )
     
-    # Creamos la "llave" (JWT) que vence en 1 hora
     payload = {
         "sub": user_found["id"],
         "usuario": user_found["usuario"],
@@ -80,6 +82,7 @@ def login(datos: dict):
     
     token = jwt.encode(payload, SECRET_KEY, algorithm="HS256")
     
+    # Respuesta con estructura Nivel 2 (punto 6 del examen)
     return {
         "data": {
             "access_token": token,
@@ -95,8 +98,38 @@ def health_check():
 
 # 3. Listar todos los productos (GET)
 @app.get("/productos")
-def obtener_productos(user_data: dict = Depends(verificar_token)):
-    return {"data": productos_db}
+def obtener_productos(
+    page: int = 1, 
+    limit: int = 5, 
+    subcategoria: Optional[str] = None,
+    estado: Optional[str] = None,
+    nombre: Optional[str] = None,
+    user_data: dict = Depends(verificar_token)
+):
+    # Aplicar filtros (Nivel 3)
+    resultados = productos_db
+    if subcategoria:
+        resultados = [p for p in resultados if p["subcategoria"].lower() == subcategoria.lower()]
+    if estado:
+        resultados = [p for p in resultados if p["estado"].lower() == estado.lower()]
+    if nombre:
+        resultados = [p for p in resultados if nombre.lower() in p["nombre"].lower()]
+
+    # Paginación (Nivel 3)
+    total = len(resultados)
+    start = (page - 1) * limit
+    end = start + limit
+    data_paginada = resultados[start:end]
+
+    return {
+        "data": data_paginada,
+        "pagination": {
+            "page": page,
+            "limit": limit,
+            "total": total,
+            "totalPages": (total + limit - 1) // limit
+        }
+    }
 
 # 4. Obtener un producto por ID (GET)
 @app.get("/productos/{producto_id}")
