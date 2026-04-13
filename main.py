@@ -1,206 +1,174 @@
-from fastapi import FastAPI, HTTPException, Depends, status, Header, Request
+from fastapi import FastAPI, HTTPException, Depends, Header
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from typing import List, Optional
 import jwt
 import datetime
+import json
+import os
 
 app = FastAPI()
 
-# 1. Datos precargados (Usuarios)
+# Configuración de CORS
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Configuración de Archivos y Seguridad
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+ARCHIVO_JSON = os.path.join(BASE_DIR, "productos.json")
+SECRET_KEY = "mi_clave_secreta_pro"
+
+# --- FUNCIONES DE PERSISTENCIA ---
+def cargar_datos():
+    if not os.path.exists(ARCHIVO_JSON):
+        with open(ARCHIVO_JSON, "w", encoding="utf-8") as f:
+            json.dump([], f)
+        return []
+    try:
+        with open(ARCHIVO_JSON, "r", encoding="utf-8") as f:
+            contenido = f.read().strip()
+            return json.loads(contenido) if contenido else []
+    except:
+        return []
+
+def guardar_datos(datos):
+    try:
+        with open(ARCHIVO_JSON, "w", encoding="utf-8") as f:
+            json.dump(datos, f, indent=4, ensure_ascii=False)
+        return True
+    except Exception as e:
+        print(f"Error al guardar: {e}")
+        return False
+
+# --- BASE DE DATOS DE USUARIOS ---
 usuarios_db = [
-    { "id": 1, "usuario": "admin", "password": "admin123", "activo": True },
-    { "id": 2, "usuario": "estudiante", "password": "est2025", "activo": True },
-    { "id": 3, "usuario": "inactivo", "password": "noactivo1", "activo": False }
+    { "id": 1, "usuario": "admin", "email": "admin@tienda.com", "rol": "administrador", "password": "admin123", "activo": True },
+    { "id": 2, "usuario": "empleado", "email": "empleado@tienda.com", "rol": "empleado", "password": "emp123", "activo": True },
+    { "id": 3, "usuario": "inactivo", "email": "inactivo@tienda.com", "rol": "invitado", "password": "noactivo1", "activo": False }
 ]
 
-# 2. Almacenamiento en memoria para productos
-productos_db = []
-contador_id = 1
-
-# Modelo de datos para Producto (Lo que recibimos)
+# --- MODELOS ---
 class Producto(BaseModel):
     nombre: str
     descripcion: str
     subcategoria: str
-    precio: float = Field(gt=0) # gt=0 significa "Greater Than 0"
+    precio: float = Field(gt=0)
     precioxcantidad: float = Field(gt=0)
-    estado: str # Validaremos que sea 'activo' o 'inactivo' en la lógica
+    estado: str
+    stock: int = Field(ge=0)
 
-@app.get("/")
-def inicio():
-    return {"mensaje": "API de Productos funcionando"}
-
-SECRET_KEY = "mi_clave_secreta_pro" # Esta es tu firma personal
-
-# Función para verificar el token y si el usuario está activo (Nivel 2)
+# --- SEGURIDAD (JWT) ---
 def verificar_token(authorization: str = Header(None)):
-    if authorization is None:
-        raise HTTPException(
-            status_code=401, 
-            detail={"error": {"code": "NO_TOKEN", "message": "Token de autenticación requerido"}}
-        )
+    # Imprime para debug (verás esto en la terminal negra)
+    print(f"DEBUG: Header recibido: {authorization}") 
+
+    if not authorization:
+        raise HTTPException(status_code=401, detail={"error": {"message": "No se envió el encabezado de autorización"}})
     
     try:
-        # El formato suele ser "Bearer <token>", así que lo separamos
-        token = authorization.split(" ")[1]
+        # Esto maneja si el navegador envía "Bearer token" o "bearer token"
+        scheme, _, token = authorization.partition(' ')
+        if scheme.lower() != 'bearer' or not token:
+            raise Exception("Formato de token inválido. Se espera 'Bearer <token>'")
+             
         payload = jwt.decode(token, SECRET_KEY, algorithms=["HS256"])
-        
-        # Validación de usuario activo (Punto 5 del examen)
-        if not payload.get("activo"):
-            raise HTTPException(
-                status_code=403, 
-                detail={"error": {"code": "USER_INACTIVE", "message": "Usuario inactivo, acceso denegado"}}
-            )
-            
-        return payload # Si todo está bien, devuelve los datos del usuario
-        
-    except jwt.ExpiredSignatureError:
-        raise HTTPException(status_code=401, detail={"error": {"code": "TOKEN_EXPIRED", "message": "El token ha expirado"}})
-    except Exception:
-        raise HTTPException(status_code=401, detail={"error": {"code": "INVALID_TOKEN", "message": "Token inválido"}})
+        return payload 
+    except Exception as e:
+        print(f"DEBUG Error JWT: {str(e)}")
+        raise HTTPException(status_code=401, detail={"error": {"message": f"Token no válido o expirado: {str(e)}"}})
+
+def verificar_admin(user_data: dict = Depends(verificar_token)):
+    if user_data.get("rol") != "administrador":
+        raise HTTPException(status_code=403, detail={"error": {"message": "Se requieren permisos de administrador"}})
+    return user_data
+
+# --- ENDPOINTS ---
 
 @app.post("/auth")
 def login(datos: dict):
     usuario = datos.get("usuario")
     password = datos.get("password")
+    user = next((u for u in usuarios_db if u["usuario"] == usuario and u["password"] == password), None)
     
-    user_found = next((u for u in usuarios_db if u["usuario"] == usuario and u["password"] == password), None)
-    
-    if not user_found:
-        # Error con estructura Nivel 2 (punto 6 del examen)
-        raise HTTPException(
-            status_code=401, 
-            detail={"error": {"code": "INVALID_CREDENTIALS", "message": "Usuario o contraseña incorrectos"}}
-        )
+    if not user:
+        raise HTTPException(status_code=401, detail={"error": {"message": "Credenciales inválidas"}})
     
     payload = {
-        "sub": user_found["id"],
-        "usuario": user_found["usuario"],
-        "activo": user_found["activo"],
+        "sub": str(user["id"]),
+        "usuario": user["usuario"],
+        "email": user["email"],
+        "rol": user["rol"],
+        "activo": user["activo"],
         "exp": datetime.datetime.utcnow() + datetime.timedelta(hours=1)
     }
-    
     token = jwt.encode(payload, SECRET_KEY, algorithm="HS256")
-    
-    # Respuesta con estructura Nivel 2 (punto 6 del examen)
-    return {
-        "data": {
-            "access_token": token,
-            "token_type": "Bearer",
-            "expires_in": 3600
-        }
-    }
+    return {"data": {"access_token": token, "token_type": "Bearer"}}
 
-# Endpoint de salud (opcional pero recomendado por tu profe)
-@app.get("/health")
-def health_check():
-    return {"status": "ok", "message": "Servidor funcionando"}
-
-# 3. Listar todos los productos (GET)
 @app.get("/productos")
-def obtener_productos(
-    page: int = 1, 
-    limit: int = 5, 
-    subcategoria: Optional[str] = None,
-    estado: Optional[str] = None,
-    nombre: Optional[str] = None,
-    user_data: dict = Depends(verificar_token)
-):
-    # Aplicar filtros (Nivel 3)
-    resultados = productos_db
-    if subcategoria:
-        resultados = [p for p in resultados if p["subcategoria"].lower() == subcategoria.lower()]
-    if estado:
-        resultados = [p for p in resultados if p["estado"].lower() == estado.lower()]
-    if nombre:
-        resultados = [p for p in resultados if nombre.lower() in p["nombre"].lower()]
+def obtener_productos(user_data: dict = Depends(verificar_token)):
+    return {"data": cargar_datos()}
 
-    # Paginación (Nivel 3)
-    total = len(resultados)
-    start = (page - 1) * limit
-    end = start + limit
-    data_paginada = resultados[start:end]
-
-    return {
-        "data": data_paginada,
-        "pagination": {
-            "page": page,
-            "limit": limit,
-            "total": total,
-            "totalPages": (total + limit - 1) // limit
-        }
-    }
-
-# 4. Obtener un producto por ID (GET)
-@app.get("/productos/{producto_id}")
-def obtener_producto(producto_id: int, user_data: dict = Depends(verificar_token)):
-    # Buscamos el producto en la lista
-    for p in productos_db:
-        if p["id"] == producto_id:
-            return {"data": p}
-    # Si no existe, error 404 como pide el examen
-    raise HTTPException(
-        status_code=404, 
-        detail={
-            "error": {
-                "code": "PRODUCT_NOT_FOUND", 
-                "message": f"No se encontró el producto con id {producto_id}"
-            }
-        }
-    )
-
-# 5. Crear un producto (POST)
 @app.post("/productos", status_code=201)
-def crear_producto(item: Producto, user_data: dict = Depends(verificar_token)):
-    global contador_id
-    # Convertimos el modelo a diccionario y le asignamos ID
-    nuevo_producto = item.dict()
-    nuevo_producto["id"] = contador_id
-    
-    productos_db.append(nuevo_producto)
-    contador_id += 1 # Aumentamos para el siguiente producto
-    
-    return {"data": nuevo_producto}
+def crear_producto(item: Producto, user_data: dict = Depends(verificar_admin)):
+    productos = cargar_datos()
+    nuevo_p = item.dict()
+    nuevo_p["id"] = max([p["id"] for p in productos], default=0) + 1
+    productos.append(nuevo_p)
+    if guardar_datos(productos):
+        return {"data": nuevo_p}
+    raise HTTPException(status_code=500, detail={"error": {"message": "Error al guardar en JSON"}})
 
-# 6. Actualizar un producto (PUT)
 @app.put("/productos/{producto_id}")
-def actualizar_producto(producto_id: int, item_actualizado: Producto, user_data: dict = Depends(verificar_token)):
-    for i, p in enumerate(productos_db):
-        if p["id"] == producto_id:
-            # Creamos el diccionario con los nuevos datos pero mantenemos el mismo ID
-            producto_editado = item_actualizado.dict()
-            producto_editado["id"] = producto_id
-            
-            # Reemplazamos en la lista
-            productos_db[i] = producto_editado
-            return {"data": producto_editado}
+def actualizar_producto(producto_id: int, item_actualizado: Producto, user_data: dict = Depends(verificar_admin)):
+    productos = cargar_datos()
     
-    # Si llegamos aquí es porque no se encontró el producto, error 404 con estructura Nivel 2
-    raise HTTPException(
-        status_code=404, 
-        detail={
-            "error": {
-                "code": "PRODUCT_NOT_FOUND", 
-                "message": f"No se encontró el producto con id {producto_id}"
-            }
-        }
-    )
+    # Buscamos la posición del producto
+    indice = next((i for i, p in enumerate(productos) if p["id"] == producto_id), None)
+    
+    if indice is None:
+        raise HTTPException(
+            status_code=404, 
+            detail={"error": {"message": f"No se encontró el producto con ID {producto_id}"}}
+        )
+    
+    # Mantenemos el mismo ID, pero actualizamos el resto
+    producto_editado = item_actualizado.dict()
+    producto_editado["id"] = producto_id
+    
+    productos[indice] = producto_editado
+    
+    if guardar_datos(productos):
+        return {"data": producto_editado}
+    else:
+        raise HTTPException(status_code=500, detail={"error": {"message": "Error al escribir en el JSON"}})
 
-# 7. Eliminar un producto (DELETE)
 @app.delete("/productos/{producto_id}")
-def eliminar_producto(producto_id: int, user_data: dict = Depends(verificar_token)):
-    for i, p in enumerate(productos_db):
+def eliminar_producto(producto_id: int, user_data: dict = Depends(verificar_admin)):
+    productos = cargar_datos()
+    nuevos_productos = [p for p in productos if p["id"] != producto_id]
+    if len(nuevos_productos) == len(productos):
+        raise HTTPException(status_code=404, detail={"error": {"message": "No encontrado"}})
+    guardar_datos(nuevos_productos)
+    return {"data": {"message": "Eliminado"}}
+
+
+@app.patch("/productos/{producto_id}/stock")
+def actualizar_stock(producto_id: int, nuevo_stock: int, user_data: dict = Depends(verificar_token)):
+    # Buscamos al usuario por su rol en el token
+    # Si es admin o empleado, lo dejamos pasar
+    if user_data.get("rol") not in ["administrador", "empleado"]:
+        raise HTTPException(status_code=403, detail="No tienes permiso para modificar inventario")
+    
+    productos = cargar_datos()
+    for p in productos:
         if p["id"] == producto_id:
-            productos_db.pop(i) # Lo sacamos de la lista
-            return {"data": {"message": "Producto eliminado exitosamente"}}
+            p["stock"] = nuevo_stock
+            guardar_datos(productos)
+            return {"data": p}
             
-    # Si llegamos aquí es porque no se encontró el producto, error 404 con estructura Nivel 2
-    raise HTTPException(
-        status_code=404, 
-        detail={
-            "error": {
-                "code": "PRODUCT_NOT_FOUND", 
-                "message": f"No se encontró el producto con id {producto_id}"
-            }
-        }
-    )
+    raise HTTPException(status_code=404, detail="Producto no encontrado")

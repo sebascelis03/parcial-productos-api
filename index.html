@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Gestión de Productos</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-100 p-4 md:p-8">
+    <div class="max-w-5xl mx-auto">
+        <h1 class="text-3xl font-bold text-blue-700 mb-6">Catálogo de Productos</h1>
+
+        <div id="section-login" class="bg-white p-6 rounded-lg shadow-md mb-6">
+            <h2 class="text-xl font-semibold mb-4 text-gray-700">Identificación</h2>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <input id="user" type="text" placeholder="Usuario" class="border p-2 rounded w-full">
+                <input id="pass" type="password" placeholder="Contraseña" class="border p-2 rounded w-full">
+                <button onclick="login()" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded transition">Entrar</button>
+            </div>
+        </div>
+
+        <div id="section-app" class="hidden space-y-6">
+            <div class="bg-blue-50 p-4 rounded-lg flex justify-between items-center border border-blue-200">
+                <div>
+                    <span class="font-bold text-blue-800">Bienvenido:</span> <span id="display-user"></span> 
+                    <span id="display-badge" class="ml-2 px-2 py-1 text-xs rounded-full"></span>
+                    <p id="display-email" class="text-sm text-blue-600 italic"></p>
+                </div>
+                <button onclick="location.reload()" class="text-red-600 text-sm font-semibold hover:underline">Cerrar Sesión</button>
+            </div>
+
+            <div id="admin-controls" class="hidden bg-white p-6 rounded-lg shadow-md">
+                <h2 class="text-xl font-bold mb-4 text-green-700 text-center">Registrar Nuevo Producto</h2>
+                <div class="grid grid-cols-2 gap-4">
+                    <input id="f-nombre" type="text" placeholder="Nombre" class="border p-2 rounded">
+                    <input id="f-desc" type="text" placeholder="Descripción" class="border p-2 rounded">
+                    <input id="f-sub" type="text" placeholder="Subcategoría" class="border p-2 rounded">
+                    <input id="f-estado" type="text" placeholder="Estado (activo/inactivo)" class="border p-2 rounded">
+                    <input id="f-precio" type="number" placeholder="Precio" class="border p-2 rounded">
+                    <input id="f-precioq" type="number" placeholder="Precio x Cantidad" class="border p-2 rounded">
+                    <input id="f-stock" type="number" placeholder="Stock / Cantidad" class="border p-2 rounded">
+                </div>
+                <button onclick="guardarProducto()" class="mt-4 w-full bg-green-600 hover:bg-green-700 text-white font-bold py-2 rounded">Guardar Producto</button>
+            </div>
+
+            <div class="bg-white p-6 rounded-lg shadow-md overflow-x-auto">
+                <div class="flex justify-between items-center mb-4">
+                    <h2 class="text-xl font-bold text-gray-800">Inventario Actual</h2>
+                    <button onclick="cargarProductos()" class="bg-gray-200 hover:bg-gray-300 px-3 py-1 rounded text-sm">Refrescar Tabla</button>
+                </div>
+                <table class="w-full text-left border-collapse">
+                    <thead class="bg-gray-50">
+                        <tr>
+                            <th class="p-3 border-b">ID</th>
+                            <th class="p-3 border-b">Producto</th>
+                            <th class="p-3 border-b">Precio</th>
+                            <th class="p-3 border-b">Estado</th>
+                            <th class="p-3 border-b text-center">Acción</th>
+                        </tr>
+                    </thead>
+                    <tbody id="lista-productos" class="divide-y divide-gray-200"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let token = "";
+    let userRole = "";
+    let editandoID = null;
+
+    async function login() {
+        const usuario = document.getElementById('user').value;
+        const password = document.getElementById('pass').value;
+
+        try {
+            const res = await fetch('http://127.0.0.1:8000/auth', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ usuario, password })
+            });
+
+            const result = await res.json();
+
+            if (res.ok) {
+                token = result.data.access_token;
+                const base64Url = token.split('.')[1];
+                const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+                const payload = JSON.parse(window.atob(base64));
+                
+                userRole = payload.rol;
+                
+                document.getElementById('display-user').innerText = payload.usuario;
+                document.getElementById('display-email').innerText = payload.email;
+                document.getElementById('display-badge').innerText = userRole.toUpperCase();
+                
+                const badge = document.getElementById('display-badge');
+                if(userRole === 'administrador') {
+                    badge.className = 'bg-purple-200 text-purple-800 ml-2 px-2 py-1 text-xs rounded-full';
+                    document.getElementById('admin-controls').classList.remove('hidden');
+                } else {
+                    badge.className = 'bg-gray-200 text-gray-800 ml-2 px-2 py-1 text-xs rounded-full';
+                    document.getElementById('admin-controls').classList.add('hidden');
+                }
+
+                document.getElementById('section-login').classList.add('hidden');
+                document.getElementById('section-app').classList.remove('hidden');
+                cargarProductos();
+            } else {
+                alert("Error: " + (result.detail?.error?.message || "Credenciales incorrectas"));
+            }
+        } catch (e) {
+            alert("Error de conexión con el servidor.");
+        }
+    }
+
+    async function cargarProductos() {
+        try {
+            const res = await fetch('http://127.0.0.1:8000/productos', {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            const result = await res.json();
+            const productos = result.data || [];
+            const tabla = document.getElementById('lista-productos');
+            tabla.innerHTML = "";
+            
+            productos.forEach(p => {
+                // Dentro del forEach de cargarProductos:
+                const esAdmin = userRole === 'administrador';
+                const esEmpleado = userRole === 'empleado';
+
+                // Solo el admin ve el botón amarillo de edición completa
+                const btnEditar = esAdmin 
+                    ? `<button onclick='prepararEdicion(${JSON.stringify(p)})' ...>Editar Todo</button>` 
+                    : "";
+
+                // AMBOS ven el botón azul de Stock
+                const btnStock = (esAdmin || esEmpleado)
+                    ? `<button onclick="modificarStock(${p.id}, ${p.stock})" class="bg-blue-100 text-blue-700 px-3 py-1 rounded hover:bg-blue-200 text-xs mr-2">Stock</button>`
+                    : "";
+
+                // Botón Eliminar (Solo Admin)
+                const btnEliminar = esAdmin 
+                    ? `<button onclick="eliminarProducto(${p.id})" class="bg-red-100 text-red-600 px-3 py-1 rounded hover:bg-red-200 text-xs">Eliminar</button>` 
+                    : "";
+
+                tabla.innerHTML += `
+                    <tr>
+                        <td class="p-3 text-sm">#${p.id}</td>
+                        <td class="p-3 font-bold">${p.nombre}</td>
+                        <td class="p-3 text-blue-600 font-bold">$${p.precio}</td>
+                        <td class="p-3 text-center"><span class="bg-gray-100 px-2 py-1 rounded text-sm">${p.stock || 0}</span></td>
+                        <td class="p-3 text-center">${btnEditar} ${btnStock} ${btnEliminar}</td>
+                    </tr>
+                `;
+            });
+        } catch (e) {
+            console.error("Error:", e);
+        }
+    }
+
+    async function guardarProducto() {
+        const data = {
+            nombre: document.getElementById('f-nombre').value,
+            descripcion: document.getElementById('f-desc').value,
+            subcategoria: document.getElementById('f-sub').value,
+            estado: document.getElementById('f-estado').value,
+            precio: parseFloat(document.getElementById('f-precio').value) || 0,
+            precioxcantidad: parseFloat(document.getElementById('f-precioq').value) || 0,
+            stock: parseInt(document.getElementById('f-stock').value) || 0
+        };
+
+        const url = editandoID ? `http://127.0.0.1:8000/productos/${editandoID}` : 'http://127.0.0.1:8000/productos';
+        const metodo = editandoID ? 'PUT' : 'POST';
+
+        const res = await fetch(url, {
+            method: metodo,
+            headers: { 
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify(data)
+        });
+
+        if(res.ok) {
+            alert(editandoID ? "¡Producto actualizado!" : "¡Producto creado!");
+            resetearFormulario();
+            cargarProductos();
+        } else {
+            alert("Error al guardar. Verifique los datos.");
+        }
+    }
+
+    function prepararEdicion(p) {
+        editandoID = p.id;
+        document.getElementById('f-nombre').value = p.nombre;
+        document.getElementById('f-desc').value = p.descripcion;
+        document.getElementById('f-sub').value = p.subcategoria;
+        document.getElementById('f-estado').value = p.estado;
+        document.getElementById('f-precio').value = p.precio;
+        document.getElementById('f-precioq').value = p.precioxcantidad;
+        document.getElementById('f-stock').value = p.stock || 0;
+
+        const btn = document.querySelector('#admin-controls button');
+        btn.innerText = "Actualizar Producto #" + p.id;
+        btn.className = "mt-4 w-full bg-yellow-600 hover:bg-yellow-700 text-white font-bold py-2 rounded";
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    function resetearFormulario() {
+        editandoID = null;
+        document.querySelectorAll('#admin-controls input').forEach(i => i.value = "");
+        const btn = document.querySelector('#admin-controls button');
+        btn.innerText = "Guardar Producto";
+        btn.className = "mt-4 w-full bg-green-600 hover:bg-green-700 text-white font-bold py-2 rounded";
+    }
+
+    async function modificarStock(id, actual) {
+        const nuevo = prompt("Nueva cantidad de stock:", actual);
+        if (nuevo === null || nuevo === "") return;
+
+        const res = await fetch(`http://127.0.0.1:8000/productos/${id}/stock?nuevo_stock=${nuevo}`, {
+            method: 'PATCH',
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+
+        if(res.ok) cargarProductos();
+        else alert("No tienes permiso.");
+    }
+
+    async function eliminarProducto(id) {
+        if(!confirm("¿Eliminar producto?")) return;
+        const res = await fetch(`http://127.0.0.1:8000/productos/${id}`, {
+            method: 'DELETE',
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if(res.ok) cargarProductos();
+    }
+</script>
+</body>
+</html>

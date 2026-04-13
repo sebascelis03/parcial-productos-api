@@ -1,0 +1,12 @@
+[
+    {
+        "nombre": "Producto Inicial",
+        "descripcion": "Cargado desde el archivo",
+        "subcategoria": "General",
+        "precio": 1000.0,
+        "precioxcantidad": 800.0,
+        "estado": "activo",
+        "stock": 6,
+        "id": 1
+    }
+]

@@ -1,12 +1,18 @@
 "# parcial-productos-api" 
 # Parcial API REST - Gestión de Productos
-**Estudiante:** Sebas Celis
+**Estudiante:** Jhoan Sebastian Celis Pabon
 
-## Ejecución
-1. Instalar dependencias: `pip install fastapi uvicorn PyJWT`
-2. Correr servidor: `uvicorn main:app --reload --port 3000`
+# API de Gestión de Productos - Parcial
+Desarrollado con FastAPI y Tailwind CSS.
 
-## Notas de entrega
-- Se implementó Nivel 3 (Filtros, Paginación y Validaciones).
-- Autenticación mediante JWT con expiración de 1 hora.
-- La documentación interactiva está en: http://127.0.0.1:8000/docs
+## Instrucciones de ejecución
+1. Activar entorno virtual: `.\venv\Scripts\activate`
+2. Instalar dependencias: `pip install fastapi uvicorn PyJWT`
+3. Correr servidor: `uvicorn main:app --reload`
+4. Abrir `index.html` en el navegador.
+
+## Usuarios de prueba
+- **Admin:** admin / admin123 (Acceso total)
+- **Empleado:** empleado / emp123 (Solo lectura)
+- **Inactivo:** inactivo / noactivo1 (Bloqueado)
+
