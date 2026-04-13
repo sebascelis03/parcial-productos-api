@@ -139,7 +139,15 @@ def obtener_producto(producto_id: int, user_data: dict = Depends(verificar_token
         if p["id"] == producto_id:
             return {"data": p}
     # Si no existe, error 404 como pide el examen
-    raise HTTPException(status_code=404, detail=f"No se encontró el producto con id {producto_id}")
+    raise HTTPException(
+        status_code=404, 
+        detail={
+            "error": {
+                "code": "PRODUCT_NOT_FOUND", 
+                "message": f"No se encontró el producto con id {producto_id}"
+            }
+        }
+    )
 
 # 5. Crear un producto (POST)
 @app.post("/productos", status_code=201)
@@ -167,8 +175,16 @@ def actualizar_producto(producto_id: int, item_actualizado: Producto, user_data:
             productos_db[i] = producto_editado
             return {"data": producto_editado}
     
-    # Si llegamos aquí es porque no se encontró
-    raise HTTPException(status_code=404, detail=f"No se encontró el producto con id {producto_id}")
+    # Si llegamos aquí es porque no se encontró el producto, error 404 con estructura Nivel 2
+    raise HTTPException(
+        status_code=404, 
+        detail={
+            "error": {
+                "code": "PRODUCT_NOT_FOUND", 
+                "message": f"No se encontró el producto con id {producto_id}"
+            }
+        }
+    )
 
 # 7. Eliminar un producto (DELETE)
 @app.delete("/productos/{producto_id}")
@@ -178,4 +194,13 @@ def eliminar_producto(producto_id: int, user_data: dict = Depends(verificar_toke
             productos_db.pop(i) # Lo sacamos de la lista
             return {"data": {"message": "Producto eliminado exitosamente"}}
             
-    raise HTTPException(status_code=404, detail=f"No se encontró el producto con id {producto_id}")
+    # Si llegamos aquí es porque no se encontró el producto, error 404 con estructura Nivel 2
+    raise HTTPException(
+        status_code=404, 
+        detail={
+            "error": {
+                "code": "PRODUCT_NOT_FOUND", 
+                "message": f"No se encontró el producto con id {producto_id}"
+            }
+        }
+    )

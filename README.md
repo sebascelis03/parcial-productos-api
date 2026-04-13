@@ -4,7 +4,7 @@
 
 ## Ejecución
 1. Instalar dependencias: `pip install fastapi uvicorn PyJWT`
-2. Correr servidor: `uvicorn main:app --reload --port 8000`
+2. Correr servidor: `uvicorn main:app --reload --port 3000`
 
 ## Notas de entrega
 - Se implementó Nivel 3 (Filtros, Paginación y Validaciones).
