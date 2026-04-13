@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, Depends, status
+from fastapi import FastAPI, HTTPException, Depends, status, Header, Request
 from pydantic import BaseModel
 from typing import List, Optional
 import jwt
@@ -31,6 +31,33 @@ def inicio():
     return {"mensaje": "API de Productos funcionando"}
 
 SECRET_KEY = "mi_clave_secreta_pro" # Esta es tu firma personal
+
+# Función para verificar el token y si el usuario está activo (Nivel 2)
+def verificar_token(authorization: str = Header(None)):
+    if authorization is None:
+        raise HTTPException(
+            status_code=401, 
+            detail={"error": {"code": "NO_TOKEN", "message": "Token de autenticación requerido"}}
+        )
+    
+    try:
+        # El formato suele ser "Bearer <token>", así que lo separamos
+        token = authorization.split(" ")[1]
+        payload = jwt.decode(token, SECRET_KEY, algorithms=["HS256"])
+        
+        # Validación de usuario activo (Punto 5 del examen)
+        if not payload.get("activo"):
+            raise HTTPException(
+                status_code=403, 
+                detail={"error": {"code": "USER_INACTIVE", "message": "Usuario inactivo, acceso denegado"}}
+            )
+            
+        return payload # Si todo está bien, devuelve los datos del usuario
+        
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(status_code=401, detail={"error": {"code": "TOKEN_EXPIRED", "message": "El token ha expirado"}})
+    except Exception:
+        raise HTTPException(status_code=401, detail={"error": {"code": "INVALID_TOKEN", "message": "Token inválido"}})
 
 @app.post("/auth")
 def login(datos: dict):
@@ -68,12 +95,12 @@ def health_check():
 
 # 3. Listar todos los productos (GET)
 @app.get("/productos")
-def obtener_productos():
+def obtener_productos(user_data: dict = Depends(verificar_token)):
     return {"data": productos_db}
 
 # 4. Obtener un producto por ID (GET)
 @app.get("/productos/{producto_id}")
-def obtener_producto(producto_id: int):
+def obtener_producto(producto_id: int, user_data: dict = Depends(verificar_token)):
     # Buscamos el producto en la lista
     for p in productos_db:
         if p["id"] == producto_id:
@@ -83,7 +110,7 @@ def obtener_producto(producto_id: int):
 
 # 5. Crear un producto (POST)
 @app.post("/productos", status_code=201)
-def crear_producto(item: Producto):
+def crear_producto(item: Producto, user_data: dict = Depends(verificar_token)):
     global contador_id
     # Convertimos el modelo a diccionario y le asignamos ID
     nuevo_producto = item.dict()
@@ -96,7 +123,7 @@ def crear_producto(item: Producto):
 
 # 6. Actualizar un producto (PUT)
 @app.put("/productos/{producto_id}")
-def actualizar_producto(producto_id: int, item_actualizado: Producto):
+def actualizar_producto(producto_id: int, item_actualizado: Producto, user_data: dict = Depends(verificar_token)):
     for i, p in enumerate(productos_db):
         if p["id"] == producto_id:
             # Creamos el diccionario con los nuevos datos pero mantenemos el mismo ID
@@ -112,7 +139,7 @@ def actualizar_producto(producto_id: int, item_actualizado: Producto):
 
 # 7. Eliminar un producto (DELETE)
 @app.delete("/productos/{producto_id}")
-def eliminar_producto(producto_id: int):
+def eliminar_producto(producto_id: int, user_data: dict = Depends(verificar_token)):
     for i, p in enumerate(productos_db):
         if p["id"] == producto_id:
             productos_db.pop(i) # Lo sacamos de la lista
