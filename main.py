@@ -65,3 +65,57 @@ def login(datos: dict):
 @app.get("/health")
 def health_check():
     return {"status": "ok", "message": "Servidor funcionando"}
+
+# 3. Listar todos los productos (GET)
+@app.get("/productos")
+def obtener_productos():
+    return {"data": productos_db}
+
+# 4. Obtener un producto por ID (GET)
+@app.get("/productos/{producto_id}")
+def obtener_producto(producto_id: int):
+    # Buscamos el producto en la lista
+    for p in productos_db:
+        if p["id"] == producto_id:
+            return {"data": p}
+    # Si no existe, error 404 como pide el examen
+    raise HTTPException(status_code=404, detail=f"No se encontró el producto con id {producto_id}")
+
+# 5. Crear un producto (POST)
+@app.post("/productos", status_code=201)
+def crear_producto(item: Producto):
+    global contador_id
+    # Convertimos el modelo a diccionario y le asignamos ID
+    nuevo_producto = item.dict()
+    nuevo_producto["id"] = contador_id
+    
+    productos_db.append(nuevo_producto)
+    contador_id += 1 # Aumentamos para el siguiente producto
+    
+    return {"data": nuevo_producto}
+
+# 6. Actualizar un producto (PUT)
+@app.put("/productos/{producto_id}")
+def actualizar_producto(producto_id: int, item_actualizado: Producto):
+    for i, p in enumerate(productos_db):
+        if p["id"] == producto_id:
+            # Creamos el diccionario con los nuevos datos pero mantenemos el mismo ID
+            producto_editado = item_actualizado.dict()
+            producto_editado["id"] = producto_id
+            
+            # Reemplazamos en la lista
+            productos_db[i] = producto_editado
+            return {"data": producto_editado}
+    
+    # Si llegamos aquí es porque no se encontró
+    raise HTTPException(status_code=404, detail=f"No se encontró el producto con id {producto_id}")
+
+# 7. Eliminar un producto (DELETE)
+@app.delete("/productos/{producto_id}")
+def eliminar_producto(producto_id: int):
+    for i, p in enumerate(productos_db):
+        if p["id"] == producto_id:
+            productos_db.pop(i) # Lo sacamos de la lista
+            return {"data": {"message": "Producto eliminado exitosamente"}}
+            
+    raise HTTPException(status_code=404, detail=f"No se encontró el producto con id {producto_id}")
