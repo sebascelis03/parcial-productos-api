@@ -6,7 +6,27 @@
         "precio": 1000.0,
         "precioxcantidad": 800.0,
         "estado": "activo",
-        "stock": 6,
+        "stock": 7,
         "id": 1
+    },
+    {
+        "nombre": "Pan",
+        "descripcion": "comida",
+        "subcategoria": "Comida",
+        "precio": 1500.0,
+        "precioxcantidad": 1200.0,
+        "estado": "activo",
+        "stock": 8,
+        "id": 2
+    },
+    {
+        "nombre": "Robux",
+        "descripcion": "Moneda Virtual para productos de la plataforma Roblox",
+        "subcategoria": "Moneda Digital",
+        "precio": 20000.0,
+        "precioxcantidad": 18000.0,
+        "estado": "activo",
+        "stock": 800,
+        "id": 3
     }
 ]
