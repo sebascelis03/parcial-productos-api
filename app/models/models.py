@@ -1,3 +1,4 @@
+from typing import Literal
 from pydantic import BaseModel, Field
 
 class Producto(BaseModel):
@@ -6,7 +7,7 @@ class Producto(BaseModel):
     subcategoria: str
     precio: float = Field(gt=0)
     precioxcantidad: float = Field(gt=0)
-    estado: str
+    estado: Literal["activo", "inactivo"]
     stock: int = Field(ge=0)
 
 class UserLogin(BaseModel):

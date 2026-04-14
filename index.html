@@ -41,7 +41,17 @@
                 </div>
                 <button onclick="guardarProducto()" class="mt-4 w-full bg-green-600 hover:bg-green-700 text-white font-bold py-2 rounded">Guardar Producto</button>
             </div>
-
+            <div class="bg-white p-4 rounded-lg shadow-sm mb-4 flex flex-wrap gap-4 items-end">
+    <div class="flex-1">
+        <label class="block text-xs font-bold text-gray-600 uppercase">Buscar por nombre</label>
+        <input type="text" id="filtroNombre" placeholder="Ej: Monitor..." 
+               class="w-full mt-1 border rounded px-3 py-2 text-sm focus:ring-2 focus:ring-blue-400 outline-none">
+    </div>
+    <button onclick="cargarProductos()" 
+            class="bg-blue-600 text-white px-6 py-2 rounded hover:bg-blue-700 transition font-bold text-sm">
+        Filtrar
+    </button>
+</div>
             <div class="bg-white p-6 rounded-lg shadow-md overflow-x-auto">
                 <div class="flex justify-between items-center mb-4">
                     <h2 class="text-xl font-bold text-gray-800">Inventario Actual</h2>
@@ -113,50 +123,66 @@
         }
     }
 
-    async function cargarProductos() {
-        try {
-            const res = await fetch('http://127.0.0.1:8000/productos', {
-                headers: { 'Authorization': `Bearer ${token}` }
-            });
-            const result = await res.json();
-            const productos = result.data || [];
-            const tabla = document.getElementById('lista-productos');
-            tabla.innerHTML = "";
-            
-            productos.forEach(p => {
-                // Dentro del forEach de cargarProductos:
-                const esAdmin = userRole === 'administrador';
-                const esEmpleado = userRole === 'empleado';
+async function cargarProductos() {
+    // Usamos el token global que obtuviste en el login
+    if (!token) return;
 
-                // Solo el admin ve el botón amarillo de edición completa
-                const btnEditar = esAdmin 
-                    ? `<button onclick='prepararEdicion(${JSON.stringify(p)})' ...>Editar Todo</button>` 
-                    : "";
-
-                // AMBOS ven el botón azul de Stock
-                const btnStock = (esAdmin || esEmpleado)
-                    ? `<button onclick="modificarStock(${p.id}, ${p.stock})" class="bg-blue-100 text-blue-700 px-3 py-1 rounded hover:bg-blue-200 text-xs mr-2">Stock</button>`
-                    : "";
-
-                // Botón Eliminar (Solo Admin)
-                const btnEliminar = esAdmin 
-                    ? `<button onclick="eliminarProducto(${p.id})" class="bg-red-100 text-red-600 px-3 py-1 rounded hover:bg-red-200 text-xs">Eliminar</button>` 
-                    : "";
-
-                tabla.innerHTML += `
-                    <tr>
-                        <td class="p-3 text-sm">#${p.id}</td>
-                        <td class="p-3 font-bold">${p.nombre}</td>
-                        <td class="p-3 text-blue-600 font-bold">$${p.precio}</td>
-                        <td class="p-3 text-center"><span class="bg-gray-100 px-2 py-1 rounded text-sm">${p.stock || 0}</span></td>
-                        <td class="p-3 text-center">${btnEditar} ${btnStock} ${btnEliminar}</td>
-                    </tr>
-                `;
-            });
-        } catch (e) {
-            console.error("Error:", e);
-        }
+    const nombre = document.getElementById('filtroNombre').value;
+    
+    // Construimos la URL con el filtro de nombre
+    let url = `http://127.0.0.1:8000/productos?page=1&limit=50`;
+    if (nombre) {
+        url += `&nombre=${encodeURIComponent(nombre)}`;
     }
+
+    try {
+        const response = await fetch(url, {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        
+        const result = await response.json();
+        const productos = result.data; // Accedemos a la llave 'data' del Nivel 3
+
+        const tabla = document.getElementById('lista-productos');
+        tabla.innerHTML = "";
+
+        if (!productos || productos.length === 0) {
+            tabla.innerHTML = `<tr><td colspan="5" class="text-center p-4">No se encontraron productos</td></tr>`;
+            return;
+        }
+
+        productos.forEach(p => {
+            // Lógica para mostrar botones según el rol
+            let botones = `
+                <button onclick="modificarStock(${p.id}, ${p.stock})" class="text-blue-600 font-bold mr-2">Stock</button>
+            `;
+
+            // SOLO el admin ve Editar y Eliminar
+            if (userRole === 'administrador') {
+                botones += `
+                    <button onclick='prepararEdicion(${JSON.stringify(p)})' class="text-yellow-600 font-bold mr-2">Editar</button>
+                    <button onclick="eliminarProducto(${p.id})" class="text-red-600 font-bold">Eliminar</button>
+                `;
+            }
+
+            tabla.innerHTML += `
+                <tr class="border-b">
+                    <td class="p-3">${p.id}</td>
+                    <td class="p-3">
+                        <div class="font-bold">${p.nombre}</div>
+                        <div class="text-xs text-gray-400">${p.subcategoria}</div>
+                    </td>
+                    <td class="p-3">$${p.precio} <br> <small class="text-blue-500">M: $${p.precioxcantidad}</small></td>
+                    <td class="p-3">${p.estado}</td>
+                    <td class="p-3 text-center">${botones}</td>
+                </tr>`;
+        });
+    } catch (e) {
+        console.error("Error:", e);
+    }
+}
+
+
 
     async function guardarProducto() {
         const data = {
@@ -235,6 +261,7 @@
         });
         if(res.ok) cargarProductos();
     }
+    
 </script>
 </body>
 </html>
