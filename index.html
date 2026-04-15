@@ -25,7 +25,7 @@
                     <span id="display-badge" class="ml-2 px-2 py-1 text-xs rounded-full"></span>
                     <p id="display-email" class="text-sm text-blue-600 italic"></p>
                 </div>
-                <button onclick="location.reload()" class="text-red-600 text-sm font-semibold hover:underline">Cerrar Sesión</button>
+                <button onclick="logout()" class="text-red-600 text-sm font-semibold hover:underline">Cerrar Sesión</button>
             </div>
 
             <div id="admin-controls" class="hidden bg-white p-6 rounded-lg shadow-md">
@@ -37,7 +37,6 @@
                     <input id="f-estado" type="text" placeholder="Estado (activo/inactivo)" class="border p-2 rounded">
                     <input id="f-precio" type="number" placeholder="Precio" class="border p-2 rounded">
                     <input id="f-precioq" type="number" placeholder="Precio x Cantidad" class="border p-2 rounded">
-                    <input id="f-stock" type="number" placeholder="Stock / Cantidad" class="border p-2 rounded">
                 </div>
                 <button onclick="guardarProducto()" class="mt-4 w-full bg-green-600 hover:bg-green-700 text-white font-bold py-2 rounded">Guardar Producto</button>
             </div>
@@ -74,16 +73,77 @@
     </div>
 
     <script>
+        const apiBaseUrl = window.location.origin === 'null' ? 'http://127.0.0.1:3000' : window.location.origin;
         let token = "";
-    let userRole = "";
-    let editandoID = null;
+        let userRole = "";
+        let editandoID = null;
 
-    async function login() {
+        function guardarSesion(payload, jwtToken) {
+            token = jwtToken;
+            userRole = payload.rol;
+            localStorage.setItem('token', jwtToken);
+            localStorage.setItem('userRole', payload.rol);
+            localStorage.setItem('usuario', payload.usuario);
+            localStorage.setItem('email', payload.email || '');
+        }
+
+        function limpiarSesion() {
+            token = "";
+            userRole = "";
+            editandoID = null;
+            localStorage.removeItem('token');
+            localStorage.removeItem('userRole');
+            localStorage.removeItem('usuario');
+            localStorage.removeItem('email');
+            document.getElementById('section-login').classList.remove('hidden');
+            document.getElementById('section-app').classList.add('hidden');
+            document.getElementById('display-user').innerText = "";
+            document.getElementById('display-email').innerText = "";
+            document.getElementById('display-badge').innerText = "";
+            document.getElementById('admin-controls').classList.add('hidden');
+            resetearFormulario();
+        }
+
+        function logout() {
+            limpiarSesion();
+        }
+
+        function restaurarSesion() {
+            const storedToken = localStorage.getItem('token');
+            const storedRole = localStorage.getItem('userRole');
+            const storedUsuario = localStorage.getItem('usuario');
+            const storedEmail = localStorage.getItem('email');
+            if (!storedToken || !storedRole) return false;
+
+            token = storedToken;
+            userRole = storedRole;
+            document.getElementById('display-user').innerText = storedUsuario || '';
+            document.getElementById('display-email').innerText = storedEmail || '';
+            document.getElementById('display-badge').innerText = userRole.toUpperCase();
+            const badge = document.getElementById('display-badge');
+            if(userRole === 'administrador') {
+                badge.className = 'bg-purple-200 text-purple-800 ml-2 px-2 py-1 text-xs rounded-full';
+                document.getElementById('admin-controls').classList.remove('hidden');
+            } else {
+                badge.className = 'bg-gray-200 text-gray-800 ml-2 px-2 py-1 text-xs rounded-full';
+                document.getElementById('admin-controls').classList.add('hidden');
+            }
+            document.getElementById('section-login').classList.add('hidden');
+            document.getElementById('section-app').classList.remove('hidden');
+            cargarProductos();
+            return true;
+        }
+
+        function initApp() {
+            restaurarSesion();
+        }
+
+        async function login() {
         const usuario = document.getElementById('user').value;
         const password = document.getElementById('pass').value;
 
         try {
-            const res = await fetch('http://127.0.0.1:8000/auth', {
+            const res = await fetch(`${apiBaseUrl}/auth`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ usuario, password })
@@ -92,13 +152,13 @@
             const result = await res.json();
 
             if (res.ok) {
-                token = result.data.access_token;
-                const base64Url = token.split('.')[1];
+                const jwtToken = result.data.access_token;
+                const base64Url = jwtToken.split('.')[1];
                 const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
                 const payload = JSON.parse(window.atob(base64));
-                
-                userRole = payload.rol;
-                
+
+                guardarSesion(payload, jwtToken);
+
                 document.getElementById('display-user').innerText = payload.usuario;
                 document.getElementById('display-email').innerText = payload.email;
                 document.getElementById('display-badge').innerText = userRole.toUpperCase();
@@ -130,7 +190,7 @@ async function cargarProductos() {
     const nombre = document.getElementById('filtroNombre').value;
     
     // Construimos la URL con el filtro de nombre
-    let url = `http://127.0.0.1:8000/productos?page=1&limit=50`;
+    let url = `${apiBaseUrl}/productos?page=1&limit=50`;
     if (nombre) {
         url += `&nombre=${encodeURIComponent(nombre)}`;
     }
@@ -140,6 +200,17 @@ async function cargarProductos() {
             headers: { 'Authorization': `Bearer ${token}` }
         });
         
+        if (!response.ok) {
+            if (response.status === 401) {
+                alert("Sesión expirada o token inválido. Inicia sesión nuevamente.");
+                logout();
+                return;
+            } else {
+                alert("Error al cargar productos: " + response.status + " " + response.statusText);
+                return;
+            }
+        }
+
         const result = await response.json();
         const productos = result.data; // Accedemos a la llave 'data' del Nivel 3
 
@@ -153,9 +224,7 @@ async function cargarProductos() {
 
         productos.forEach(p => {
             // Lógica para mostrar botones según el rol
-            let botones = `
-                <button onclick="modificarStock(${p.id}, ${p.stock})" class="text-blue-600 font-bold mr-2">Stock</button>
-            `;
+            let botones = ``;
 
             // SOLO el admin ve Editar y Eliminar
             if (userRole === 'administrador') {
@@ -179,9 +248,9 @@ async function cargarProductos() {
         });
     } catch (e) {
         console.error("Error:", e);
+        alert("Error de conexión con el servidor.");
     }
 }
-
 
 
     async function guardarProducto() {
@@ -191,11 +260,10 @@ async function cargarProductos() {
             subcategoria: document.getElementById('f-sub').value,
             estado: document.getElementById('f-estado').value,
             precio: parseFloat(document.getElementById('f-precio').value) || 0,
-            precioxcantidad: parseFloat(document.getElementById('f-precioq').value) || 0,
-            stock: parseInt(document.getElementById('f-stock').value) || 0
+            precioxcantidad: parseFloat(document.getElementById('f-precioq').value) || 0
         };
 
-        const url = editandoID ? `http://127.0.0.1:8000/productos/${editandoID}` : 'http://127.0.0.1:8000/productos';
+        const url = editandoID ? `${apiBaseUrl}/productos/${editandoID}` : `${apiBaseUrl}/productos`; 
         const metodo = editandoID ? 'PUT' : 'POST';
 
         const res = await fetch(url, {
@@ -212,7 +280,12 @@ async function cargarProductos() {
             resetearFormulario();
             cargarProductos();
         } else {
-            alert("Error al guardar. Verifique los datos.");
+            try {
+                const error = await res.json();
+                alert("Error: " + (error.detail?.error?.message || "Error al guardar"));
+            } catch {
+                alert("Error: " + res.status + " " + res.statusText);
+            }
         }
     }
 
@@ -224,7 +297,6 @@ async function cargarProductos() {
         document.getElementById('f-estado').value = p.estado;
         document.getElementById('f-precio').value = p.precio;
         document.getElementById('f-precioq').value = p.precioxcantidad;
-        document.getElementById('f-stock').value = p.stock || 0;
 
         const btn = document.querySelector('#admin-controls button');
         btn.innerText = "Actualizar Producto #" + p.id;
@@ -240,28 +312,24 @@ async function cargarProductos() {
         btn.className = "mt-4 w-full bg-green-600 hover:bg-green-700 text-white font-bold py-2 rounded";
     }
 
-    async function modificarStock(id, actual) {
-        const nuevo = prompt("Nueva cantidad de stock:", actual);
-        if (nuevo === null || nuevo === "") return;
-
-        const res = await fetch(`http://127.0.0.1:8000/productos/${id}/stock?nuevo_stock=${nuevo}`, {
-            method: 'PATCH',
-            headers: { 'Authorization': `Bearer ${token}` }
-        });
-
-        if(res.ok) cargarProductos();
-        else alert("No tienes permiso.");
-    }
-
     async function eliminarProducto(id) {
         if(!confirm("¿Eliminar producto?")) return;
-        const res = await fetch(`http://127.0.0.1:8000/productos/${id}`, {
+        const res = await fetch(`${apiBaseUrl}/productos/${id}`, {
             method: 'DELETE',
             headers: { 'Authorization': `Bearer ${token}` }
         });
         if(res.ok) cargarProductos();
+        else {
+            try {
+                const error = await res.json();
+                alert("Error: " + (error.detail?.error?.message || "Error al eliminar"));
+            } catch {
+                alert("Error: " + res.status + " " + res.statusText);
+            }
+        }
     }
-    
+
+    window.addEventListener('DOMContentLoaded', initApp);
 </script>
 </body>
 </html>

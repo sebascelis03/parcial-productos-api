@@ -8,7 +8,6 @@ class Producto(BaseModel):
     precio: float = Field(gt=0)
     precioxcantidad: float = Field(gt=0)
     estado: Literal["activo", "inactivo"]
-    stock: int = Field(ge=0)
 
 class UserLogin(BaseModel):
     usuario: str

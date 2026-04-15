@@ -87,19 +87,6 @@ def eliminar_producto_id(producto_id: int):
         return {"data": {"message": "Producto eliminado con éxito"}}
     raise HTTPException(status_code=500, detail={"error": {"code": "INTERNAL_ERROR", "message": "Error al borrar en JSON"}})
 
-# actualiza solo el stock de un producto por id
-
-def actualizar_solo_stock(producto_id: int, nuevo_stock: int):
-    productos = cargar_datos()
-    for p in productos:
-        if p["id"] == producto_id:
-            p["stock"] = nuevo_stock
-            if guardar_datos(productos):
-                return {"data": p}
-            raise HTTPException(status_code=500, detail={"error": {"code": "INTERNAL_ERROR", "message": "Error al guardar stock"}})
-    
-    raise HTTPException(status_code=404, detail={"error": {"code": "PRODUCT_NOT_FOUND", "message": "Producto no encontrado"}})
-
 # lista productos con filtros y paginacion
 
 def listar_productos(nombre: str = None, subcategoria: str = None, precio_min: float = None, precio_max: float = None, estado: str = None, page: int = 1, limit: int = 10):

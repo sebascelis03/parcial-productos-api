@@ -62,8 +62,7 @@ app.add_middleware(
 @app.get("/", tags=["Frontend"], summary="Index", response_class=HTMLResponse)
 # sirve el index html de la app
 async def read_index():
-    # Buscamos el index.html dentro de app/views/
-    ruta_html = os.path.join(os.path.dirname(__file__), "app", "views", "index.html")
+    ruta_html = os.path.join(os.path.dirname(__file__), "index.html")
     with open(ruta_html, "r", encoding="utf-8") as f:
         return f.read()
 
@@ -111,11 +110,6 @@ def crear(item: Producto, user=Depends(verificar_admin)):
 # actualiza un producto completo por id
 def actualizar(producto_id: int, item: Producto, user=Depends(verificar_admin)):
     return pc.actualizar_producto_id(producto_id, item)
-
-@app.patch("/productos/{producto_id}/stock", tags=["Productos"], summary="Actualizar Stock")
-# actualiza solo el stock del producto
-def stock(producto_id: int, nuevo_stock: int, user=Depends(verificar_token)):
-    return pc.actualizar_solo_stock(producto_id, nuevo_stock)
 
 @app.delete("/productos/{producto_id}", tags=["Productos"])
 # elimina un producto por id

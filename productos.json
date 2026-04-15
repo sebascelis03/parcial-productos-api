@@ -5,19 +5,8 @@
         "subcategoria": "General",
         "precio": 1000.0,
         "precioxcantidad": 800.0,
-        "estado": "activo",
-        "stock": 7,
+        "estado": "inactivo",
         "id": 1
-    },
-    {
-        "nombre": "Pan",
-        "descripcion": "comida",
-        "subcategoria": "Comida",
-        "precio": 1500.0,
-        "precioxcantidad": 1200.0,
-        "estado": "activo",
-        "stock": 8,
-        "id": 2
     },
     {
         "nombre": "Robux",
